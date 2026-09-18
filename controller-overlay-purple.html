@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Controller Overlay - Kenney Xbox Series (Purple)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --neon:   #cea3ff;
+    --neon-a: #a8d4bd;
+    --neon-b: #dcafaf;
+    --neon-x: #a9c4de;
+    --neon-y: #ded2a4;
+    --dark:   rgba(24,20,32, 0.93);
+    --panel:  rgba(24,20,32, 0.82);
+    --border: rgba(206,163,255, 0.28);
+    --font:   'Share Tech Mono', monospace;
+  }
+
+  html, body {
+    background: transparent;
+    width: 480px;
+    height: 360px;
+    overflow: hidden;
+    font-family: var(--font);
+  }
+
+  #overlay {
+    width: 480px;
+    height: 360px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: none;   /* no outline around the transparent dead space */
+  }
+
+  #overlay::after {
+    content: '';
+    position: absolute; inset: 0; z-index: 30;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.055) 2px, rgba(0,0,0,0.055) 4px
+    );
+  }
+
+  .top-strip {
+    position: relative; z-index: 10;
+    background: var(--dark);
+    border-bottom: 1px solid rgba(206,163,255,0.13);
+    height: 36px; flex-shrink: 0;
+    display: flex; align-items: center;
+    padding: 0 10px;
+  }
+
+  .main-area {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+  }
+
+  .arch-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 480px; height: 324px;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .ctrl {
+    position: absolute;
+    z-index: 5;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 6px;
+    background: var(--panel);
+    padding: 8px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(206,163,255,0.08);
+  }
+  .ctrl-dpad { left: 6px;  top: 12px; }
+  .ctrl-ls   { left: 6px;  bottom: 10px; }
+  .ctrl-face { right: 6px; top: 12px; }
+  .ctrl-rs   { right: 6px; bottom: 10px; }
+  .ctrl-label {
+    font-size: 7px; letter-spacing: 2px;
+    color: rgba(206,163,255,0.28); text-transform: uppercase;
+  }
+
+  .trig-group { display:flex;align-items:center;gap:4px;flex-shrink:0; }
+  /* LT/RT glyph is a state indicator: full glow at any press level (--on).
+     The bar fill is the analog readout and scales with travel (--lvl). */
+  .trig-label {
+    display:flex;align-items:center;flex-shrink:0;color:var(--neon);
+    opacity:calc(0.42 + var(--on,0) * 0.58);
+    filter:drop-shadow(0 0 calc(var(--on,0) * 5px) var(--neon))
+           drop-shadow(0 0 calc(var(--on,0) * 13px) var(--neon));
+    transition:opacity 0.05s, filter 0.05s;
+  }
+  .trig-bar {
+    width:52px;height:9px;
+    background:rgba(206,163,255,0.05);
+    border:1px solid rgba(206,163,255,0.18); overflow:hidden;
+  }
+  .trig-fill {
+    height:100%;width:0%;
+    background:linear-gradient(90deg,var(--neon),rgba(206,163,255,0.5));
+    /* --lvl is the live 0..1 trigger value, set by the poll loop on .trig-group,
+       so the glow grows with travel instead of being on/off */
+    box-shadow:
+      0 0 calc(3px + var(--lvl,0) * 9px) var(--neon),
+      0 0 calc(var(--lvl,0) * 20px) var(--neon);
+    transition:width 0.04s linear;
+  }
+  .trig-pct { font-size:7px;color:rgba(206,163,255,0.28);min-width:20px; }
+  .bump {
+    width:32px;height:32px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;transition:opacity 0.06s,filter 0.06s;
+    color:var(--neon);opacity:0.45;
+  }
+  .bump.pressed { opacity:1;filter:drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 13px var(--neon)); }
+  .center-btns { flex:1;display:flex;align-items:center;justify-content:center;gap:8px; }
+  .mini-btn {
+    width:26px;height:26px;
+    display:flex;align-items:center;justify-content:center;
+    transition:opacity 0.06s,filter 0.06s;flex-shrink:0;
+    color:var(--neon);opacity:0.42;
+  }
+  .mini-btn.pressed { opacity:1;filter:drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 12px var(--neon)); }
+  .guide-btn { width:30px;height:30px; }
+  .strip-gap { width:6px;flex-shrink:0; }
+
+  /* ---- Kenney official Xbox Series glyphs (CC0), inlined as a sprite ---- */
+  .k { display:block; }
+
+  /* D-pad: Kenney's real shape. Base sits dim; the per-direction highlight path
+     from xbox_dpad_<dir>.svg lights on press. */
+  .dpad { width:84px;height:84px;position:relative;color:var(--neon); }
+  .dpad .k-base { position:absolute;top:0;left:0;opacity:0.26; }
+  .dp { position:absolute;top:0;left:0;opacity:0;transition:opacity 0.06s;color:var(--neon); }
+  .dp.pressed {
+    opacity:1;
+    filter:drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 13px var(--neon));
+  }
+
+  .stick-zone {
+    width:68px;height:68px;border-radius:50%;
+    background:rgba(206,163,255,0.04);
+    border:1px solid rgba(206,163,255,0.14);
+    position:relative;overflow:hidden;
+  }
+  .stick-zone::before { content:'';position:absolute;width:22px;height:22px;border-radius:50%;border:1px dashed rgba(206,163,255,0.13);top:50%;left:50%;transform:translate(-50%,-50%); }
+  .stick-zone::after {
+    content:'';position:absolute;inset:0;
+    background:
+      linear-gradient(transparent 49%,rgba(206,163,255,0.06) 49%,rgba(206,163,255,0.06) 51%,transparent 51%),
+      linear-gradient(90deg,transparent 49%,rgba(206,163,255,0.06) 49%,rgba(206,163,255,0.06) 51%,transparent 51%);
+  }
+  .stick-dot {
+    position:absolute;width:17px;height:17px;border-radius:50%;
+    background:var(--neon);top:50%;left:50%;transform:translate(-50%,-50%);
+    box-shadow:0 0 11px var(--neon),0 0 24px rgba(206,163,255,0.4);
+    transition:top 0.04s linear,left 0.04s linear;z-index:2;
+  }
+  .stick-dot.clicked { background:#fff;box-shadow:0 0 13px #fff,0 0 29px var(--neon); }
+
+  /* stick glyph label - only the click state glows */
+  .stick-label {
+    position:relative;width:26px;height:26px;
+    color:var(--neon);opacity:0.5;transition:opacity 0.06s;
+  }
+  .stick-label .k { position:absolute;top:0;left:0;transition:opacity 0.06s; }
+  .stick-label .s-press { opacity:0; }
+  .stick-label.clicked { opacity:1; }
+  .stick-label.clicked .s-idle  { opacity:0; }
+  .stick-label.clicked .s-press {
+    opacity:1;
+    filter:drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 13px var(--neon));
+  }
+
+  /* Face buttons: Kenney's official colours in the real controller diamond -
+     Y north, X west, B east, A south - inside a square footprint that matches
+     the d-pad. */
+  .face-cluster { width:84px;height:84px;position:relative; }
+  .face-btn {
+    position:absolute;
+    width:34px;height:34px;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0.58;transition:opacity 0.06s,filter 0.06s;
+  }
+  .btn-y { left:25px; top:0; }
+  .btn-x { left:0;       top:25px; }
+  .btn-b { left:50px; top:25px; }
+  .btn-a { left:25px; top:50px; }
+  .face-btn.pressed { opacity:1; }
+  .btn-a.pressed { filter:drop-shadow(0 0 5px #7DB700) drop-shadow(0 0 15px rgba(125,183,0,0.75)); }
+  .btn-b.pressed { filter:drop-shadow(0 0 5px #EF4E29) drop-shadow(0 0 15px rgba(239,78,41,0.75)); }
+  .btn-x.pressed { filter:drop-shadow(0 0 5px #009FEB) drop-shadow(0 0 15px rgba(0,159,235,0.75)); }
+  .btn-y.pressed { filter:drop-shadow(0 0 5px #FEB504) drop-shadow(0 0 15px rgba(254,181,4,0.75)); }
+
+  #no-ctrl {
+    position:absolute;inset:0;z-index:25;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:8px;
+    background:rgba(24,20,32,0.9);
+    font-size:10px;color:rgba(206,163,255,0.3);
+    letter-spacing:3px;text-transform:uppercase;
+  }
+  #no-ctrl .icon { font-size:26px;opacity:0.22;animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:0.12} 50%{opacity:0.35} }
+</style>
+</head>
+<body>
+<div id="overlay">
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="k-dpad" viewBox="0 0 64 64"><path fill="currentColor" d="M27 8 L37 8 Q41 8 41 12 L41 23 52 23 Q56 23 56 27 L56 37 Q56 41 52 41 L41 41 41 52 Q41 56 37 56 L27 56 Q23 56 23 52 L23 41 12 41 Q8 41 8 37 L8 27 Q8 23 12 23 L23 23 23 12 Q23 8 27 8"/></symbol><symbol id="k-dpad-up" viewBox="0 0 64 64"><path fill="currentColor" d="M41 23 L23 23 23 12 Q23 8 27 8 L37 8 Q41 8 41 12 L41 23"/></symbol><symbol id="k-dpad-down" viewBox="0 0 64 64"><path fill="currentColor" d="M23 41 L41 41 41 52 Q41 56 37 56 L27 56 Q23 56 23 52 L23 41"/></symbol><symbol id="k-dpad-left" viewBox="0 0 64 64"><path fill="currentColor" d="M23 23 L23 41 12 41 Q8 41 8 37 L8 27 Q8 23 12 23 L23 23"/></symbol><symbol id="k-dpad-right" viewBox="0 0 64 64"><path fill="currentColor" d="M41 23 L52 23 Q56 23 56 27 L56 37 Q56 41 52 41 L41 41 41 23"/></symbol><symbol id="k-face-a" viewBox="0 0 64 64"><path fill="#7DB700" d="M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M38 42 L42 42 34 22 30 22 22 42 26 42 27.6 38 36.4 38 38 42 M32 27 L34.8 34 29.2 34 32 27"/></symbol><symbol id="k-face-b" viewBox="0 0 64 64"><path fill="#EF4E29" d="M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M37 28 Q37 28.85 36.45 29.4 L36.4 29.4 Q35.8 30 35 30 L29 30 29 26 35 26 Q35.8 26 36.35 26.55 L36.45 26.65 Q37 27.2 37 28 M41 36 Q41 33.7 39.5 32 41 30.3 41 28 41 25.55 39.25 23.8 L39.2 23.75 Q37.45 22 35 22 L25 22 25 42 35 42 Q37.45 42 39.2 40.25 L39.25 40.2 Q41 38.45 41 36 M37 36 Q37 36.8 36.45 37.35 L36.35 37.45 Q35.8 38 35 38 L29 38 29 34 35 34 Q35.8 34 36.4 34.6 L36.45 34.6 Q37 35.15 37 36"/></symbol><symbol id="k-face-x" viewBox="0 0 64 64"><path fill="#009FEB" d="M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M23 25 L29 32 23 39 23 40 25.25 42 26.4 42 32 35.5 37.65 42 38.75 42 41 40 41 39 35 32 41 25 41 24 38.75 22 37.65 22 32 28.55 26.4 22 25.25 22 23 24 23 25"/></symbol><symbol id="k-face-y" viewBox="0 0 64 64"><path fill="#FEB504" d="M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M23 25 L30 32.9 30 42 34 42 34 32.9 41 25 41 24 38.75 22 37.65 22 32 28.55 26.4 22 25.25 22 23 24 23 25"/></symbol><symbol id="k-lb" viewBox="0 0 64 64"><path fill="currentColor" d="M40 39 Q41.6 39 42.8 37.8 44 36.65 44 35 44 33.6 43.1 32.5 44 31.45 44 30 44 28.4 42.8 27.2 41.6 26 40 26 L33 26 33 39 40 39 M40 31 L36 31 36 29 40 29 Q40.45 29 40.7 29.3 L41 30 40.7 30.7 Q40.45 31 40 31 M48 16 Q56 16 56 24 L56 40 Q56 48 48 48 L16 48 Q8 48 8 40 L8 32 Q8 25.4 12.7 20.7 17.4 16 24 16 L48 16 M40 36 L36 36 36 34 40 34 Q40.45 34 40.7 34.3 L41 35 40.7 35.7 Q40.45 36 40 36 M24 36 L24 26 21 26 21 39 30 39 30 36 24 36"/></symbol><symbol id="k-rb" viewBox="0 0 64 64"><path fill="currentColor" d="M40 39 Q41.6 39 42.8 37.8 44 36.65 44 35 44 33.6 43.1 32.5 44 31.45 44 30 44 28.4 42.8 27.2 41.6 26 40 26 L33 26 33 39 40 39 M40 31 L36 31 36 29 40 29 Q40.45 29 40.7 29.3 L41 30 40.7 30.7 Q40.45 31 40 31 M16 16 L40 16 Q46.6 16 51.3 20.7 56 25.4 56 32 L56 40 Q56 48 48 48 L16 48 Q8 48 8 40 L8 24 Q8 16 16 16 M40 36 L36 36 36 34 40 34 Q40.45 34 40.7 34.3 L41 35 40.7 35.7 Q40.45 36 40 36 M25 36 L26 35.9 26 36 27 39 30 39 28.5 34.5 Q30 33.05 30 31 30 28.95 28.5 27.45 27.05 26 25 26 L19 26 19 39 22 39 22 36 25 36 M22 33 L22 29 25 29 Q25.85 29 26.4 29.55 27 30.15 27 31 27 31.85 26.4 32.4 25.85 33 25.05 33 L22 33"/></symbol><symbol id="k-lt" viewBox="0 0 64 64"><path fill="currentColor" d="M15.7 54 Q8 53.85 8 46 L8 18 Q8 10 16 10 L48 10 Q56 10 56 18 L56 31.05 Q55.65 40.3 48.95 47 42.15 53.8 32.65 54 L15.7 54 M37 36 L41 36 41 23 46 23 46 19 32 19 32 23 37 23 37 36 M18 19 L18 36 30 36 30 32 22 32 22 19 18 19"/></symbol><symbol id="k-rt" viewBox="0 0 64 64"><path fill="currentColor" d="M38 36 L42 36 42 23 47 23 47 19 33 19 33 23 38 23 38 36 M48.3 54 L31.35 54 Q21.85 53.8 15.05 47 8.35 40.3 8 31.05 L8 18 Q8 10 16 10 L48 10 Q56 10 56 18 L56 46 Q56 53.85 48.3 54 M25 23 Q25.8 23 26.4 23.6 27 24.2 27 25 27 25.8 26.45 26.35 L26.35 26.45 Q25.8 27 25 27 L22 27 22 23 25 23 M18 19 L18 36 22 36 22 31 25 31 27.5 36 31.5 36 28.45 29.9 29.2 29.25 29.25 29.2 Q31 27.45 31 25 31 22.5 29.25 20.75 27.5 19 25 19 L18 19"/></symbol><symbol id="k-view" viewBox="0 0 64 64"><path fill="currentColor" d="M28 43 L29 44 44 44 45 43 45 30 44 29 29 29 28 30 28 43 M20 35 L21 36 26 36 26 33 23 33 23 23.95 34 23.95 34 27 37 27 37 22 36 21 21 21 20 22 20 35 M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M42 32 L42 41 31 41 31 32 42 32"/></symbol><symbol id="k-menu" viewBox="0 0 64 64"><path fill="currentColor" d="M21 22 L21 26 43 26 43 22 21 22 M56 32 Q56 42 48.95 48.95 42 56 32 56 22.05 56 15 48.95 8 42 8 32 8 22.05 15 15 22.05 8 32 8 42 8 48.95 15 56 22.05 56 32 M21 38 L21 42 43 42 43 38 21 38 M21 30 L21 34 43 34 43 30 21 30"/></symbol><symbol id="k-guide" viewBox="0 0 64 64"><path fill="currentColor" d="M51.3 45.75 Q51.65 44.05 50.6 40.7 49.55 37.45 46.45 32.2 43.3 26.95 40.05 22.85 L38.7 21.1 40.15 19.75 Q42.85 17.3 44.9 16 45.75 15.5 46.8 15.1 L48.4 14.65 Q48.7 14.65 49.7 15.7 L51.6 18 Q54.5 22.05 55.6 27.3 55.95 28.9 56 31.8 L55.7 36.35 Q55.1 39.45 53.9 42 L52.7 44.3 51.4 46.25 51.15 46.45 51.3 45.8 51.3 45.75 M29.95 13.85 Q28.5 13.1 26.45 12.4 24.45 11.65 23.15 11.45 L20.9 11.3 19.95 11.2 Q20.1 11 21.8 10.25 24.4 9 27.4 8.35 L32.05 8 36.65 8.35 Q38.6 8.75 40.65 9.5 42.65 10.25 43.9 11.1 L44.4 11.4 43.3 11.35 Q39.75 11.1 34.05 13.85 L31.95 14.8 29.95 13.85 M29.6 55.9 Q23.9 55.35 18.95 52.1 L16.3 50.05 Q15.65 49.3 15.65 48.2 15.65 46.05 17.9 42.4 20.2 38.8 24.25 34.45 26.55 32 29.2 29.65 31.8 27.35 32.1 27.4 32.8 27.6 36.9 31.55 40.95 35.5 43 38 46.25 41.95 47.65 45 49 48.05 48.25 49.5 47.7 50.6 44.8 52.35 41.9 54.1 39.3 54.9 L34.5 55.85 29.6 55.9 M12 45.2 Q10.3 42.6 9.4 39.85 8.45 37.15 8.1 33.5 L8 31.2 8.45 27.65 Q8.95 24.55 10.6 21.3 12.2 18 14.35 15.8 15.2 14.85 15.6 14.75 L17.1 15 Q19.55 15.85 23.75 19.6 L25.45 21.15 24.5 22.3 Q21.2 26.35 18.2 31.35 15.1 36.45 13.8 39.95 13.1 41.85 12.85 43.6 12.55 45.35 12.9 46.15 L12.9 46.5 12 45.2"/></symbol><symbol id="k-stick-l" viewBox="0 0 64 64"><path fill="currentColor" d="M44.15 19 Q47.7 22 48 25.95 L48 26.05 Q47.7 30 44.2 32.9 L44 33.05 Q39.05 37 32 37 24.85 37 19.8 32.95 L19.7 32.9 Q16.3 30 16 26.1 L16 26.05 Q16.25 22 19.85 19 L19.95 18.9 Q25 15 32 15 39.15 15 44.2 19 L44.15 19 M43 50 Q43 52.5 39.75 54.25 36.55 56 32 56 27.5 56 24.25 54.25 21 52.5 21 50 L21 47.9 Q17.8 46.55 15 44.3 8 38.7 8 30.65 L8 30.1 8 29.55 8 29 8 28.5 8 28.1 8 27.95 8 27.4 Q8 19.4 15 13.65 22.05 8 32 8 42 8 48.95 13.65 56 19.4 56 27.4 L56 27.95 56 28.1 56 28.5 56 29 56 29.55 56 30.1 56 30.65 Q56 38.7 48.95 44.3 46.2 46.55 43 47.9 L43 50 M31 30 L31 20 28 20 28 33 37 33 37 30 31 30 M12 27.4 Q12.1 33.45 17.4 37.65 23.45 42.5 32 42.5 40.55 42.5 46.55 37.7 L46.6 37.65 Q51.9 33.4 52 27.4 51.85 21.4 46.55 17.1 40.55 12.3 32 12.3 23.45 12.3 17.4 17.1 L17.45 17.1 Q12.15 21.4 12 27.4"/></symbol><symbol id="k-stick-r" viewBox="0 0 64 64"><path fill="currentColor" d="M44.15 19 Q47.7 22 48 25.95 L48 26.05 Q47.7 30 44.2 32.9 L44 33.05 Q39.05 37 32 37 24.85 37 19.8 32.95 L19.7 32.9 Q16.3 30 16 26.1 L16 26.05 Q16.25 22 19.85 19 L19.95 18.9 Q25 15 32 15 39.15 15 44.2 19 L44.15 19 M43 50 Q43 52.5 39.75 54.25 36.55 56 32 56 27.5 56 24.25 54.25 21 52.5 21 50 L21 47.9 Q17.8 46.55 15 44.3 8 38.7 8 30.65 L8 30.1 8 29.55 8 29 8 28.5 8 28.1 8 27.95 8 27.4 Q8 19.4 15 13.65 22.05 8 32 8 42 8 48.95 13.65 56 19.4 56 27.4 L56 27.95 56 28.1 56 28.5 56 29 56 29.55 56 30.1 56 30.65 Q56 38.7 48.95 44.3 46.2 46.55 43 47.9 L43 50 M33 30 L34 29.9 34 30 35 33 38 33 36.5 28.5 Q38 27.05 38 25 38 22.95 36.5 21.45 35.05 20 33 20 L27 20 27 33 30 33 30 30 33 30 M30 27 L30 23 33 23 Q33.85 23 34.4 23.55 35 24.15 35 25 35 25.85 34.4 26.4 33.85 27 33.05 27 L30 27 M12 27.4 Q12.1 33.45 17.4 37.65 23.45 42.5 32 42.5 40.55 42.5 46.55 37.7 L46.6 37.65 Q51.9 33.4 52 27.4 51.85 21.4 46.55 17.1 40.55 12.3 32 12.3 23.45 12.3 17.4 17.1 L17.45 17.1 Q12.15 21.4 12 27.4"/></symbol><symbol id="k-stick-l-press" viewBox="0 0 64 64"><path fill="currentColor" d="M43 50 Q43 52.5 39.75 54.25 36.55 56 32 56 27.5 56 24.25 54.25 21 52.5 21 50 L21 47.9 Q17.8 46.55 15 44.3 8 38.7 8 30.65 L8 30.1 8 29.55 8 29 8 28.5 8 28.1 8 27.95 8 27.4 Q8 19.4 15 13.65 18.5 10.85 22.75 9.45 L26.15 12.95 Q21.25 14.05 17.4 17.1 L17.45 17.1 Q12.15 21.4 12 27.4 12.1 33.45 17.4 37.65 23.45 42.5 32 42.5 40.55 42.5 46.55 37.7 L46.6 37.65 Q51.9 33.4 52 27.4 51.85 21.4 46.55 17.1 42.75 14.05 37.9 12.95 L41.25 9.45 Q45.5 10.85 48.95 13.65 56 19.4 56 27.4 L56 27.95 56 28.1 56 28.5 56 29 56 29.55 56 30.1 56 30.65 Q56 38.7 48.95 44.3 46.2 46.55 43 47.9 L43 50 M44.15 19 Q47.7 22 48 25.95 L48 26.05 Q47.7 30 44.2 32.9 L44 33.05 Q39.05 37 32 37 24.85 37 19.8 32.95 L19.7 32.9 Q16.3 30 16 26.1 L16 26.05 Q16.25 22 19.85 19 L19.95 18.9 Q23.65 16.05 28.4 15.3 L28.7 15.6 Q30 17 32 17 33.85 17.05 35.3 15.65 L35.3 15.6 35.6 15.3 Q40.5 16.05 44.2 19 L44.15 19 M30.85 13.5 L24.45 6.85 Q24 6.35 24 5.65 24 4.95 24.45 4.5 24.9 4 25.6 4 L38.4 4 Q39.05 4 39.55 4.5 40 4.95 40 5.65 40 6.35 39.55 6.85 L33.15 13.5 Q32.65 14 32 14 31.3 14 30.85 13.5 M31 30 L31 20 28 20 28 33 37 33 37 30 31 30"/></symbol><symbol id="k-stick-r-press" viewBox="0 0 64 64"><path fill="currentColor" d="M43 50 Q43 52.5 39.75 54.25 36.55 56 32 56 27.5 56 24.25 54.25 21 52.5 21 50 L21 47.9 Q17.8 46.55 15 44.3 8 38.7 8 30.65 L8 30.1 8 29.55 8 29 8 28.5 8 28.1 8 27.95 8 27.4 Q8 19.4 15 13.65 18.5 10.85 22.75 9.45 L26.15 12.95 Q21.25 14.05 17.4 17.1 L17.45 17.1 Q12.15 21.4 12 27.4 12.1 33.45 17.4 37.65 23.45 42.5 32 42.5 40.55 42.5 46.55 37.7 L46.6 37.65 Q51.9 33.4 52 27.4 51.85 21.4 46.55 17.1 42.75 14.05 37.9 12.95 L41.25 9.45 Q45.5 10.85 48.95 13.65 56 19.4 56 27.4 L56 27.95 56 28.1 56 28.5 56 29 56 29.55 56 30.1 56 30.65 Q56 38.7 48.95 44.3 46.2 46.55 43 47.9 L43 50 M44.15 19 Q47.7 22 48 25.95 L48 26.05 Q47.7 30 44.2 32.9 L44 33.05 Q39.05 37 32 37 24.85 37 19.8 32.95 L19.7 32.9 Q16.3 30 16 26.1 L16 26.05 Q16.25 22 19.85 19 L19.95 18.9 Q23.65 16.05 28.4 15.3 L28.7 15.6 Q30 17 32 17 33.85 17.05 35.3 15.65 L35.3 15.6 35.6 15.3 Q40.5 16.05 44.2 19 L44.15 19 M30.85 13.5 L24.45 6.85 Q24 6.35 24 5.65 24 4.95 24.45 4.5 24.9 4 25.6 4 L38.4 4 Q39.05 4 39.55 4.5 40 4.95 40 5.65 40 6.35 39.55 6.85 L33.15 13.5 Q32.65 14 32 14 31.3 14 30.85 13.5 M33 30 L34 29.9 34 30 35 33 38 33 36.5 28.5 Q38 27.05 38 25 38 22.95 36.5 21.45 35.05 20 33 20 L27 20 27 33 30 33 30 30 33 30 M30 27 L30 23 33 23 Q33.85 23 34.4 23.55 35 24.15 35 25 35 25.85 34.4 26.4 33.85 27 33.05 27 L30 27"/></symbol></svg>
+
+
+  <div id="no-ctrl">
+    <div class="icon">🎮</div>
+    connect controller
+  </div>
+
+  <div class="top-strip">
+    <div class="trig-group" id="lt-group">
+      <div class="trig-label"><svg class="k" viewBox="0 0 64 64" width="26" height="26"><use href="#k-lt"/></svg></div>
+      <div class="trig-bar" id="lt-bar"><div class="trig-fill" id="lt-fill"></div></div>
+      <div class="trig-pct" id="lt-pct">0%</div>
+    </div>
+    <div class="strip-gap"></div>
+    <div class="bump" id="lb"><svg class="k" viewBox="0 0 64 64" width="32" height="32"><use href="#k-lb"/></svg></div>
+    <div class="center-btns">
+      <div class="mini-btn" id="btn-share"><svg class="k" viewBox="0 0 64 64" width="26" height="26"><use href="#k-view"/></svg></div>
+      <div class="mini-btn guide-btn" id="btn-guide"><svg class="k" viewBox="0 0 64 64" width="30" height="30"><use href="#k-guide"/></svg></div>
+      <div class="mini-btn" id="btn-menu"><svg class="k" viewBox="0 0 64 64" width="26" height="26"><use href="#k-menu"/></svg></div>
+    </div>
+    <div class="bump" id="rb"><svg class="k" viewBox="0 0 64 64" width="32" height="32"><use href="#k-rb"/></svg></div>
+    <div class="strip-gap"></div>
+    <div class="trig-group" id="rt-group">
+      <div class="trig-pct" id="rt-pct" style="text-align:right">0%</div>
+      <div class="trig-bar" id="rt-bar"><div class="trig-fill" id="rt-fill"></div></div>
+      <div class="trig-label"><svg class="k" viewBox="0 0 64 64" width="26" height="26"><use href="#k-rt"/></svg></div>
+    </div>
+  </div>
+
+  <div class="main-area">
+
+    <!--
+      Smooth arch vignette, popsicle dome shape
+      ───────────────────────────────────────────
+      SVG space: 480 × 324
+
+      Arch path:
+        Straight sides from y=322 up to shoulder y=182.
+        Then a near-perfect semicircle (cubic bezier, k≈0.5523)
+        of radius 136 px, peak at (240, 46).
+
+        Left quarter:  C 104,107  165,46  240,46
+        Right quarter: C 315,46   376,107 376,182
+
+        This gives a fully smooth, zero-kink dome with no point at top.
+        The blur mask (stdDeviation=18) feathers the cutout edge into
+        the surrounding shadow. A solid inner arch keeps the center
+        100% transparent.
+    -->
+    <svg class="arch-svg" viewBox="0 0 480 324" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+
+        <filter id="taper" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="18"/>
+        </filter>
+
+        <mask id="arch-mask" maskUnits="userSpaceOnUse">
+          <rect width="480" height="324" fill="white"/>
+
+          <!-- Blurred dome → creates the soft shadow taper -->
+          <path d="M104,322 L104,182
+                   C104,107 165,46 240,46
+                   C315,46 376,107 376,182
+                   L376,322 Z"
+                fill="black" filter="url(#taper)"/>
+
+          <!-- Solid dome → pins center to fully transparent -->
+          <path d="M104,322 L104,182
+                   C104,107 165,46 240,46
+                   C315,46 376,107 376,182
+                   L376,322 Z"
+                fill="black"/>
+        </mask>
+
+      </defs>
+
+      <rect width="480" height="324"
+            fill="rgb(24,20,32)" fill-opacity="0.96"
+            mask="url(#arch-mask)"/>
+
+    </svg>
+
+    <div class="ctrl ctrl-dpad">
+      <div class="dpad">
+        <svg class="k k-base" viewBox="0 0 64 64" width="84" height="84"><use href="#k-dpad"/></svg>
+        <div class="dp dp-u" id="dp-u"><svg class="k" viewBox="0 0 64 64" width="84" height="84"><use href="#k-dpad-up"/></svg></div>
+        <div class="dp dp-d" id="dp-d"><svg class="k" viewBox="0 0 64 64" width="84" height="84"><use href="#k-dpad-down"/></svg></div>
+        <div class="dp dp-l" id="dp-l"><svg class="k" viewBox="0 0 64 64" width="84" height="84"><use href="#k-dpad-left"/></svg></div>
+        <div class="dp dp-r" id="dp-r"><svg class="k" viewBox="0 0 64 64" width="84" height="84"><use href="#k-dpad-right"/></svg></div>
+      </div>
+    </div>
+
+    <div class="ctrl ctrl-ls">
+      <div class="ctrl-label stick-label" id="ls-label"><svg class="k s-idle" viewBox="0 0 64 64" width="26" height="26"><use href="#k-stick-l"/></svg><svg class="k s-press" viewBox="0 0 64 64" width="26" height="26"><use href="#k-stick-l-press"/></svg></div>
+      <div class="stick-zone" id="ls-zone">
+        <div class="stick-dot" id="ls-dot"></div>
+      </div>
+    </div>
+
+    <div class="ctrl ctrl-face">
+      <div class="face-cluster">
+        <div class="face-btn btn-y" id="btn-y"><svg class="k" viewBox="0 0 64 64" width="34" height="34"><use href="#k-face-y"/></svg></div>
+        <div class="face-btn btn-x" id="btn-x"><svg class="k" viewBox="0 0 64 64" width="34" height="34"><use href="#k-face-x"/></svg></div>
+        <div class="face-btn btn-b" id="btn-b"><svg class="k" viewBox="0 0 64 64" width="34" height="34"><use href="#k-face-b"/></svg></div>
+        <div class="face-btn btn-a" id="btn-a"><svg class="k" viewBox="0 0 64 64" width="34" height="34"><use href="#k-face-a"/></svg></div>
+      </div>
+    </div>
+
+    <div class="ctrl ctrl-rs">
+      <div class="ctrl-label stick-label" id="rs-label"><svg class="k s-idle" viewBox="0 0 64 64" width="26" height="26"><use href="#k-stick-r"/></svg><svg class="k s-press" viewBox="0 0 64 64" width="26" height="26"><use href="#k-stick-r-press"/></svg></div>
+      <div class="stick-zone" id="rs-zone">
+        <div class="stick-dot" id="rs-dot"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const DEADZONE = 0.12;
+  const $ = id => document.getElementById(id);
+
+  const els = {
+    noCtrl:   $('no-ctrl'),
+    ltFill:   $('lt-fill'), ltPct: $('lt-pct'), ltGroup: $('lt-group'),
+    rtFill:   $('rt-fill'), rtPct: $('rt-pct'), rtGroup: $('rt-group'),
+    lb: $('lb'), rb: $('rb'),
+    btnA: $('btn-a'), btnB: $('btn-b'), btnX: $('btn-x'), btnY: $('btn-y'),
+    btnShare: $('btn-share'), btnGuide: $('btn-guide'), btnMenu: $('btn-menu'),
+    dpU: $('dp-u'), dpD: $('dp-d'), dpL: $('dp-l'), dpR: $('dp-r'),
+    lsDot: $('ls-dot'), rsDot: $('rs-dot'),
+  };
+
+  function dz(v) { return Math.abs(v) < DEADZONE ? 0 : (v - Math.sign(v)*DEADZONE)/(1-DEADZONE); }
+  function press(el, on) { el.classList.toggle('pressed', !!on); }
+  function stick(dot, rx, ry, clicked) {
+    dot.style.left = (50 + dz(rx)*50) + '%';
+    dot.style.top  = (50 + dz(ry)*50) + '%';
+    dot.classList.toggle('clicked', !!clicked);
+    var lbl = document.getElementById(dot.id.slice(0, 2) + '-label');
+    if (lbl) lbl.classList.toggle('clicked', !!clicked);
+  }
+
+  function poll() {
+    const pads = navigator.getGamepads();
+    let gp = null;
+    for (const g of pads) { if (g) { gp = g; break; } }
+
+    if (!gp) { els.noCtrl.style.display = 'flex'; requestAnimationFrame(poll); return; }
+    els.noCtrl.style.display = 'none';
+
+    const b = gp.buttons, ax = gp.axes;
+
+    const lt = b[6]?.value ?? 0, rt = b[7]?.value ?? 0;
+    els.ltFill.style.width = (lt*100) + '%'; els.ltPct.textContent = Math.round(lt*100) + '%';
+    els.rtFill.style.width = (rt*100) + '%'; els.rtPct.textContent = Math.round(rt*100) + '%';
+    // --lvl is analog (drives the bar glow); --on is binary past a small deadzone,
+    // so the LT/RT glyph reads fully lit the instant the trigger moves at all.
+    els.ltGroup.style.setProperty('--lvl', lt.toFixed(3));
+    els.rtGroup.style.setProperty('--lvl', rt.toFixed(3));
+    els.ltGroup.style.setProperty('--on', lt > 0.03 ? 1 : 0);
+    els.rtGroup.style.setProperty('--on', rt > 0.03 ? 1 : 0);
+
+    press(els.lb, b[4]?.pressed); press(els.rb, b[5]?.pressed);
+    press(els.btnA, b[0]?.pressed); press(els.btnB, b[1]?.pressed);
+    press(els.btnX, b[2]?.pressed); press(els.btnY, b[3]?.pressed);
+    press(els.btnShare, b[8]?.pressed || b[17]?.pressed);
+    press(els.btnMenu,  b[9]?.pressed);
+    press(els.btnGuide, b[16]?.pressed);
+    press(els.dpU, b[12]?.pressed); press(els.dpD, b[13]?.pressed);
+    press(els.dpL, b[14]?.pressed); press(els.dpR, b[15]?.pressed);
+
+    stick(els.lsDot, ax[0]??0, ax[1]??0, b[10]?.pressed);
+    stick(els.rsDot, ax[2]??0, ax[3]??0, b[11]?.pressed);
+
+    requestAnimationFrame(poll);
+  }
+
+  window.addEventListener('gamepadconnected', poll);
+  poll();
+</script>
+</body>
+</html>
